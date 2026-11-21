@@ -1,0 +1,63 @@
+package pl.autosell;
+
+import java.lang.reflect.Method;
+
+/**
+ * Miękka integracja z Baritone przez refleksję - mod działa tak samo
+ * z Baritone i bez niego (brak twardej zależności przy kompilacji).
+ */
+public final class BaritoneBridge {
+    private static Object baritone;
+    private static Object commandManager;
+    private static Method execute;
+    private static Method getMineProcess;
+    private static Method isActive;
+    private static boolean tried;
+    private static boolean available;
+
+    private BaritoneBridge() {}
+
+    private static void init() {
+        if (tried) return;
+        tried = true;
+        try {
+            Class<?> api = Class.forName("baritone.api.BaritoneAPI");
+            Object provider = api.getMethod("getProvider").invoke(null);
+            Class<?> providerIface = Class.forName("baritone.api.IBaritoneProvider");
+            baritone = providerIface.getMethod("getPrimaryBaritone").invoke(provider);
+            Class<?> baritoneIface = Class.forName("baritone.api.IBaritone");
+            commandManager = baritoneIface.getMethod("getCommandManager").invoke(baritone);
+            execute = Class.forName("baritone.api.command.manager.ICommandManager").getMethod("execute", String.class);
+            getMineProcess = baritoneIface.getMethod("getMineProcess");
+            isActive = Class.forName("baritone.api.process.IBaritoneProcess").getMethod("isActive");
+            available = true;
+            AutoSellMod.LOGGER.info("Wykryto Baritone - integracja włączona");
+        } catch (Throwable t) {
+            available = false;
+        }
+    }
+
+    public static boolean isAvailable() {
+        init();
+        return available;
+    }
+
+    public static void run(String command) {
+        if (!isAvailable()) return;
+        try {
+            execute.invoke(commandManager, command);
+        } catch (Throwable t) {
+            AutoSellMod.LOGGER.warn("Baritone: nie udało się wykonać '" + command + "'", t);
+        }
+    }
+
+    public static boolean isMining() {
+        if (!isAvailable()) return false;
+        try {
+            Object mine = getMineProcess.invoke(baritone);
+            return (boolean) isActive.invoke(mine);
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+}

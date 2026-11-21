@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "autosell",
+  "version": "${version}",
+  "name": "AutoSell",
+  "description": "Automatycznie sprzedaje wybraną rudę w /sklep co 2 minuty (anarchia.gg). GUI pod Right Shift ze zmiennym bindem.",
+  "authors": ["AutoSell"],
+  "license": "MIT",
+  "environment": "client",
+  "entrypoints": {
+    "client": ["pl.autosell.AutoSellMod"]
+  },
+  "depends": {
+    "fabricloader": ">=0.16.0",
+    "minecraft": "~1.21.4",
+    "java": ">=21",
+    "fabric-api": "*"
+  }
+}
