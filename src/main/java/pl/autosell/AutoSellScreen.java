@@ -10,7 +10,7 @@ import org.lwjgl.glfw.GLFW;
 public class AutoSellScreen extends Screen {
     private final AutoSellConfig cfg;
     private final SellTask task;
-    private Button toggleBtn, oreBtn, keyBtn, mineBtn, sellNowBtn;
+    private Button toggleBtn, oreBtn, keyBtn, mineBtn, debugBtn, serverBtn;
     private boolean rebinding;
 
     public AutoSellScreen(AutoSellConfig cfg, SellTask task) {
@@ -21,7 +21,8 @@ public class AutoSellScreen extends Screen {
 
     @Override
     protected void init() {
-        int w = 200, h = 20, x = width / 2 - w / 2, y = height / 2 - 70, gap = 24;
+        int w = 220, h = 20, x = width / 2 - w / 2, gap = 24;
+        int y = Math.max(40, height / 2 - 96);
 
         toggleBtn = addRenderableWidget(Button.builder(Component.empty(), b -> {
             cfg.enabled = !cfg.enabled;
@@ -47,13 +48,25 @@ public class AutoSellScreen extends Screen {
             refresh();
         }).bounds(x, y + gap * 3, w, h).build());
 
-        sellNowBtn = addRenderableWidget(Button.builder(Component.literal("Sprzedaj teraz"), b -> {
-            task.sellNow();
-            onClose();
+        debugBtn = addRenderableWidget(Button.builder(Component.empty(), b -> {
+            cfg.debug = !cfg.debug;
+            cfg.save();
+            refresh();
         }).bounds(x, y + gap * 4, w, h).build());
 
+        serverBtn = addRenderableWidget(Button.builder(Component.empty(), b -> {
+            cfg.onlyOnAnarchia = !cfg.onlyOnAnarchia;
+            cfg.save();
+            refresh();
+        }).bounds(x, y + gap * 5, w, h).build());
+
+        addRenderableWidget(Button.builder(Component.literal("Sprzedaj teraz (test)"), b -> {
+            task.sellNow();
+            onClose();
+        }).bounds(x, y + gap * 6, w, h).build());
+
         addRenderableWidget(Button.builder(Component.literal("Zamknij"), b -> onClose())
-                .bounds(x, y + gap * 5, w, h).build());
+                .bounds(x, y + gap * 7, w, h).build());
 
         refresh();
     }
@@ -68,6 +81,10 @@ public class AutoSellScreen extends Screen {
         mineBtn.setMessage(Component.literal("Auto-kopanie (Baritone): "
                 + (cfg.autoMine ? "§aTAK" : "§cNIE")
                 + (BaritoneBridge.isAvailable() ? "" : " §7(brak Baritone)")));
+        debugBtn.setMessage(Component.literal("Debug (komunikaty na czacie): "
+                + (cfg.debug ? "§aTAK" : "§cNIE")));
+        serverBtn.setMessage(Component.literal("Tylko anarchia.gg: "
+                + (cfg.onlyOnAnarchia ? "§aTAK" : "§cNIE")));
     }
 
     @Override
@@ -92,14 +109,14 @@ public class AutoSellScreen extends Screen {
     public void render(GuiGraphics g, int mouseX, int mouseY, float delta) {
         super.render(g, mouseX, mouseY, delta);
         int cx = width / 2;
-        int top = height / 2 - 100;
-        g.drawCenteredString(font, Component.literal("§lAutoSell §7- anarchia.gg"), cx, top, 0xFFFFFF);
+        int top = Math.max(40, height / 2 - 96) - 28;
+        g.drawCenteredString(font, Component.literal("§lAutoSell"), cx, top, 0xFFFFFF);
 
         String status;
         if (!cfg.enabled) status = "Wyłączony";
         else if (task.busy()) status = "Sprzedaję...";
         else status = "Następna sprzedaż za " + task.secondsToNext() + "s (co " + cfg.intervalSeconds + "s)";
-        g.drawCenteredString(font, Component.literal(status), cx, top + 14, 0xAAAAAA);
+        g.drawCenteredString(font, Component.literal(status), cx, top + 12, 0xAAAAAA);
     }
 
     @Override

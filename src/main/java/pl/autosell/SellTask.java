@@ -32,6 +32,10 @@ public class SellTask {
     private long nextSellAt;
     private boolean pausedBaritone;
     private long nextMineCheck;
+    /** Ręczne "Sprzedaj teraz" z GUI - działa nawet gdy AutoSell jest wyłączony. */
+    private boolean manual;
+    /** Czy wypisywać komunikaty na czacie (ręczna sprzedaż lub debug). */
+    private boolean verbose;
 
     public SellTask(AutoSellConfig cfg) {
         this.cfg = cfg;
@@ -52,13 +56,21 @@ public class SellTask {
 
     /** Ręczne wywołanie z GUI. */
     public void sellNow() {
+        manual = true;
         nextSellAt = 0;
     }
 
+    private void say(Minecraft mc, String text) {
+        if (mc.player != null) {
+            mc.player.displayClientMessage(Component.literal("§7[AutoSell] §f" + text), false);
+        }
+    }
+
     private boolean serverOk(Minecraft mc) {
-        if (!cfg.onlyOnAnarchia) return mc.player != null;
+        if (mc.player == null) return false;
+        if (!cfg.onlyOnAnarchia) return true;
         ServerData sd = mc.getCurrentServer();
-        return mc.player != null && sd != null && sd.ip != null
+        return sd != null && sd.ip != null
                 && sd.ip.toLowerCase(Locale.ROOT).contains("anarchia.gg");
     }
 
@@ -75,7 +87,16 @@ public class SellTask {
             state = State.IDLE;
             return;
         }
-        if (!cfg.enabled || !serverOk(mc)) {
+        boolean active = cfg.enabled || manual || state != State.IDLE;
+        if (!active) return;
+
+        if (!serverOk(mc)) {
+            if (manual) {
+                ServerData sd = mc.getCurrentServer();
+                say(mc, "Nie jesteś na anarchia.gg (adres: " + (sd == null ? "brak - singleplayer" : sd.ip)
+                        + "). Wyłącz w GUI opcję 'Tylko anarchia.gg'.");
+                manual = false;
+            }
             if (state != State.IDLE) abort(mc);
             return;
         }
@@ -88,6 +109,7 @@ public class SellTask {
                     state = State.SETTLE;
                     ticks = 0;
                 } else if (ticks > OPEN_TIMEOUT_TICKS) {
+                    if (verbose) say(mc, "Menu /sklep się nie otworzyło (serwer nie odpowiedział na komendę).");
                     abort(mc);
                 }
             }
@@ -109,6 +131,7 @@ public class SellTask {
                     state = State.SETTLE;
                     ticks = 0;
                 } else {
+                    if (verbose) say(mc, "Gotowe (kliknięć: " + steps + ").");
                     finish(mc);
                 }
             }
@@ -119,7 +142,7 @@ public class SellTask {
         long now = System.currentTimeMillis();
 
         // Pełna automatyka: Baritone sam kopie wybraną rudę
-        if (cfg.autoMine && now >= nextMineCheck && mc.screen == null && BaritoneBridge.isAvailable()) {
+        if (cfg.autoMine && cfg.enabled && now >= nextMineCheck && mc.screen == null && BaritoneBridge.isAvailable()) {
             nextMineCheck = now + 10_000L;
             if (!BaritoneBridge.isMining()) {
                 BaritoneBridge.run("mine " + cfg.ore().mineBlocks());
@@ -128,13 +151,20 @@ public class SellTask {
 
         if (now < nextSellAt) return;
         if (mc.screen != null) return; // nie przeszkadzamy, spróbujemy za chwilę
+
+        verbose = cfg.debug || manual;
+        manual = false;
         resetTimer();
-        if (!hasOre(mc.player)) return; // nic do sprzedania
+        if (!hasOre(mc.player)) {
+            if (verbose) say(mc, "Nie masz w ekwipunku: " + cfg.ore().label + " (szukam: " + cfg.ore().items + ").");
+            return;
+        }
 
         if (cfg.pauseBaritoneWhileSelling && BaritoneBridge.isAvailable()) {
             BaritoneBridge.run("pause");
             pausedBaritone = true;
         }
+        if (verbose) say(mc, "Wpisuję /sklep...");
         mc.player.connection.sendCommand("sklep");
         state = State.WAIT_OPEN;
         ticks = 0;
@@ -183,8 +213,15 @@ public class SellTask {
         }
 
         int target = sellAll >= 0 ? sellAll : oreSlot >= 0 ? oreSlot : category;
-        if (target < 0) { finish(mc); return; }
+        if (target < 0) {
+            if (verbose) say(mc, "Nie znalazłem w tym menu rudy ani przycisku sprzedaży. Włącz Debug w GUI i wyślij mi listę slotów.");
+            finish(mc);
+            return;
+        }
 
+        if (verbose) {
+            say(mc, "Klikam slot #" + target + ": " + menu.slots.get(target).getItem().getHoverName().getString());
+        }
         lastContainerId = menu.containerId;
         mc.gameMode.handleInventoryMouseClick(menu.containerId, target, 0, ClickType.PICKUP, mc.player);
         steps++;
@@ -206,12 +243,11 @@ public class SellTask {
     private void dump(Minecraft mc) {
         AbstractContainerMenu menu = mc.player.containerMenu;
         int shopSlots = Math.max(0, menu.slots.size() - 36);
-        mc.player.displayClientMessage(Component.literal("[AutoSell] Menu: " + shopSlots + " slotów"), false);
+        say(mc, "Menu: " + shopSlots + " slotów, tytuł: " + mc.screen.getTitle().getString());
         for (int i = 0; i < shopSlots; i++) {
             ItemStack st = menu.slots.get(i).getItem();
             if (st.isEmpty()) continue;
-            mc.player.displayClientMessage(Component.literal(
-                    "[AutoSell] #" + i + " " + st.getItem() + " | " + st.getHoverName().getString()), false);
+            say(mc, "#" + i + " " + st.getItem() + " | " + st.getHoverName().getString());
         }
     }
 
